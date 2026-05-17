@@ -5,19 +5,23 @@
 ## 功能
 
 - 并发请求多个城市当前天气（默认：北京、上海、东京、纽约、伦敦、巴黎）
-- 列表展示温度、湿度、风速与天气描述
-- 工具栏刷新按钮重新加载
-- 部分城市失败时仍展示已成功结果，并在底部提示错误信息
+- 列表展示温度、湿度、风速与天气描述（WMO 天气码转中文）
+- 工具栏刷新按钮；加载中显示 `ProgressView`，完成后恢复刷新按钮
+- **下拉刷新**（`.refreshable`）与空态「加载天气」按钮
+- 列表内加载提示（首次「正在加载…」、已有数据时「正在更新…」）
+- 底部显示**最后更新时间**；部分城市失败时仍展示已成功结果，并提示错误信息
+- 列表与温度数字更新带动画（`withAnimation`、`.contentTransition(.numericText())`）
 
 ## 技术栈
 
 | 技术 | 用途 |
 |------|------|
-| SwiftUI | 界面与导航 |
+| SwiftUI | 界面、`.refreshable`、`.task`、空态与列表动画 |
 | `@MainActor` + `@Observable` | ViewModel 持有 UI 状态并在主线程更新 |
-| `async/await` | 调用 Open-Meteo API |
-| `Task` | 从按钮 / 视图生命周期进入异步流程 |
+| `async/await` | ViewModel 与 Open-Meteo API 调用 |
+| `Task` / `.task` / `.refreshable` | View 层进入异步流程（ViewModel 方法为 `async`，不再内部包 `Task`） |
 | `withTaskGroup` | 并发请求多个城市 |
+| `Sendable` | `WeatherAPIService`、`WeatherItem` 等跨并发边界传递 |
 
 ## 环境要求
 
@@ -35,7 +39,6 @@
 命令行构建（可选）：
 
 ```bash
-cd WeatherApp
 xcodebuild -project WeatherApp.xcodeproj -scheme WeatherApp \
   -destination 'platform=iOS Simulator,name=iPhone 17' build
 ```
@@ -65,28 +68,36 @@ WeatherApp/
 
 | 目录 | 职责 |
 |------|------|
-| **Models** | 领域模型与错误类型 |
-| **Networking** | HTTP 请求与 JSON 解析（无 UI 状态） |
-| **ViewModels** | UI 状态、加载逻辑、`TaskGroup` 并发调度 |
-| **Views** | SwiftUI 视图，只绑定 ViewModel |
+| **Models** | 领域模型与 `WeatherError` |
+| **Networking** | 地理编码、预报请求、WMO 天气码文案（无 UI 状态） |
+| **ViewModels** | UI 状态、`lastUpdated` / `lastError`、`TaskGroup` 并发调度 |
+| **Views** | SwiftUI 视图，通过 `Task` / `.task` / `.refreshable` 调用 ViewModel |
 
 ## 架构与数据流
 
 ```
 ContentView
-    ↓  .task / 按钮
-WeatherViewModel (@MainActor)
-    ↓  Task { await refresh() }
-    ↓  withTaskGroup { 每城 addTask }
-WeatherAPIService (async)
+    ↓  .task / .refreshable / Button → Task
+WeatherViewModel (@MainActor, async loadWeather / refresh)
+    ↓  performRefresh → withTaskGroup { 每城 addTask }
+WeatherAPIService (Sendable, async)
     ↓
 Open-Meteo API
 ```
 
-1. **View** 调用 ViewModel 的 `loadWeather()` 或 `refresh()`。
-2. **ViewModel** 用 `Task` 进入异步方法，更新 `isLoading`，再通过 `withTaskGroup` 并发请求各城市。
-3. 子任务内 `await` **Networking**；结果汇总后直接在主线程写入 `items`、`lastError`。
-4. SwiftUI 因 `@Observable` 自动刷新列表。
+1. **View** 在 `.task`、`.refreshable` 或按钮的 `Task` 中 `await viewModel.loadWeather()` / `refresh()`。
+2. **ViewModel** 设置 `isLoading`，用 `withTaskGroup` 并发请求各城市；子任务内 `await` **Networking**。
+3. 汇总结果后写入 `items`（按城市名排序）、`lastUpdated`、`lastError`，并用 `withAnimation` 更新列表。
+4. SwiftUI 因 `@Observable` 自动刷新；`ContentView` 在底部 `safeAreaInset` 展示更新时间与错误。
+
+### ViewModel 对外状态
+
+| 属性 | 说明 |
+|------|------|
+| `items` | 已成功拉取的城市天气列表 |
+| `isLoading` | 是否正在刷新 |
+| `lastUpdated` | 最近一次成功刷新的时间 |
+| `lastError` | 全部失败或部分失败时的提示文案 |
 
 ## 天气 API
 

@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 
 @MainActor
 @Observable
@@ -7,20 +8,21 @@ final class WeatherViewModel {
     private(set) var items: [WeatherItem] = []
     private(set) var isLoading = false
     private(set) var lastError: String?
+    private(set) var lastUpdated: Date?
 
     private let apiService = WeatherAPIService()
     private let defaultCities = ["北京", "上海", "东京", "纽约", "伦敦", "巴黎"]
 
-    func loadWeather() {
+    func loadWeather() async {
+        await refresh()
+    }
+
+    func refresh() async {
         guard !isLoading else { return }
-        Task { await refresh(cities: nil) }
+        await performRefresh(cities: nil)
     }
 
-    func refresh() {
-        Task { await refresh(cities: nil) }
-    }
-
-    private func refresh(cities: [String]?) async {
+    private func performRefresh(cities: [String]?) async {
         let targets = cities ?? defaultCities
         isLoading = true
         lastError = nil
@@ -57,7 +59,12 @@ final class WeatherViewModel {
             lastError = "部分城市加载失败：\(errors.prefix(2).joined(separator: "；"))"
         }
 
-        items = fetched.sorted { $0.city < $1.city }
+        withAnimation(.easeInOut(duration: 0.25)) {
+            items = fetched.sorted { $0.city < $1.city }
+            if !fetched.isEmpty {
+                lastUpdated = Date()
+            }
+        }
         isLoading = false
     }
 }

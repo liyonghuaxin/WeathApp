@@ -18,6 +18,7 @@ struct WeatherRowView: View {
             VStack(alignment: .trailing, spacing: 4) {
                 Text("\(item.temperature, specifier: "%.1f")°")
                     .font(.title2.monospacedDigit().weight(.semibold))
+                    .contentTransition(.numericText())
                 Text("湿度 \(item.humidity)% · 风速 \(item.windSpeed, specifier: "%.0f") km/h")
                     .font(.caption)
                     .foregroundStyle(.secondary)

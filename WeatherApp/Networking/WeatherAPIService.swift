@@ -1,6 +1,5 @@
 import Foundation
 
-/// 使用 Open-Meteo 免费 API（无需 API Key）
 struct WeatherAPIService: Sendable {
     private let session: URLSession
     private let decoder: JSONDecoder
@@ -68,8 +67,6 @@ struct WeatherAPIService: Sendable {
         }
     }
 }
-
-// MARK: - API Models
 
 private struct GeocodingResponse: Decodable {
     let results: [GeocodingResult]?
